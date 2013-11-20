@@ -1,0 +1,13 @@
+# depslib dependency file v1.0
+1384905658 source:e:\seb\documents\github\projetreseau2013\projettestprofclient\client.c
+	<stdlib.h>
+	<stdio.h>
+	<string.h>
+	<winsock2.h>
+	<sys/types.h>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<unistd.h>
+	<netdb.h>
+

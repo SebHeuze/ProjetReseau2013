@@ -3,10 +3,33 @@ Serveur à lancer avant le client
 ------------------------------------------------*/
 #include <stdlib.h>
 #include <stdio.h>
-#include <linux/types.h> 	/* pour les sockets */
+#ifdef WIN32 /* si vous êtes sous Windows */
+
+#include <winsock2.h>
+#define bcopy(b1,b2,len) (memmove((b2), (b1), (len)), (void) 0)
+
+#elif defined (linux) /* si vous êtes sous Linux */
+
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h> 		/* pour hostent, servent */
-#include <string.h> 		/* pour bcopy, ... */  
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h> /* close */
+#include <netdb.h> /* gethostbyname */
+#define INVALID_SOCKET -1
+#define SOCKET_ERROR -1
+#define closesocket(s) close(s)
+typedef int SOCKET;
+typedef struct sockaddr_in SOCKADDR_IN;
+typedef struct sockaddr SOCKADDR;
+typedef struct in_addr IN_ADDR;
+
+#else /* sinon vous êtes sur une plateforme non supportée */
+
+#error not defined for this platform
+
+#endif/* pour hostent, servent */
+#include <string.h> 		/* pour bcopy, ... */
 #define TAILLE_MAX_NOM 256
 
 typedef struct sockaddr sockaddr;
@@ -14,41 +37,61 @@ typedef struct sockaddr_in sockaddr_in;
 typedef struct hostent hostent;
 typedef struct servent servent;
 
+void init(void)
+{
+#ifdef WIN32
+    WSADATA wsa;
+    int err = WSAStartup(MAKEWORD(2, 2), &wsa);
+    if(err < 0)
+    {
+        puts("WSAStartup failed !");
+        exit(EXIT_FAILURE);
+    }
+#endif
+}
+
+void end(void)
+{
+#ifdef WIN32
+    WSACleanup();
+#endif
+}
 /*------------------------------------------------------*/
 void renvoi (int sock) {
 
     char buffer[256];
     int longueur;
-   
-    if ((longueur = read(sock, buffer, sizeof(buffer))) <= 0) 
+
+    if ((longueur = recv(sock, buffer, sizeof(buffer), 0)) <= 0)
     	return;
-    
+
     printf("message lu : %s \n", buffer);
-    
+
     buffer[0] = 'R';
     buffer[1] = 'E';
     buffer[longueur] = '#';
     buffer[longueur+1] ='\0';
-    
+
     printf("message apres traitement : %s \n", buffer);
-    
+
     printf("renvoi du message traite.\n");
 
     /* mise en attente du prgramme pour simuler un delai de transmission */
-    sleep(3);
-    
-    write(sock,buffer,strlen(buffer)+1);
-    
+    Sleep(3);
+
+    send(sock,buffer,strlen(buffer)+1, 0);
+
     printf("message envoye. \n");
-        
+
     return;
-    
+
 }
 /*------------------------------------------------------*/
 
 /*------------------------------------------------------*/
 main(int argc, char **argv) {
-  
+
+    init();
     int 		socket_descriptor, 		/* descripteur de socket */
 			nouv_socket_descriptor, 	/* [nouveau] descripteur de socket */
 			longueur_adresse_courante; 	/* longueur d'adresse courante d'un client */
@@ -57,17 +100,17 @@ main(int argc, char **argv) {
     hostent*		ptr_hote; 			/* les infos recuperees sur la machine hote */
     servent*		ptr_service; 			/* les infos recuperees sur le service de la machine */
     char 		machine[TAILLE_MAX_NOM+1]; 	/* nom de la machine locale */
-    
+
     gethostname(machine,TAILLE_MAX_NOM);		/* recuperation du nom de la machine */
-    
+
     /* recuperation de la structure d'adresse en utilisant le nom */
     if ((ptr_hote = gethostbyname(machine)) == NULL) {
 		perror("erreur : impossible de trouver le serveur a partir de son nom.");
 		exit(1);
     }
-    
-    /* initialisation de la structure adresse_locale avec les infos recuperees */			
-    
+
+    /* initialisation de la structure adresse_locale avec les infos recuperees */
+
     /* copie de ptr_hote vers adresse_locale */
     bcopy((char*)ptr_hote->h_addr, (char*)&adresse_locale.sin_addr, ptr_hote->h_length);
     adresse_locale.sin_family		= ptr_hote->h_addrtype; 	/* ou AF_INET */
@@ -75,7 +118,7 @@ main(int argc, char **argv) {
 
     /* 2 facons de definir le service que l'on va utiliser a distance */
     /* (commenter l'une ou l'autre des solutions) */
-    
+
     /*-----------------------------------------------------------*/
     /* SOLUTION 1 : utiliser un service existant, par ex. "irc" */
     /*
@@ -89,10 +132,10 @@ main(int argc, char **argv) {
     /* SOLUTION 2 : utiliser un nouveau numero de port */
     adresse_locale.sin_port = htons(5000);
     /*-----------------------------------------------------------*/
-    
-    printf("numero de port pour la connexion au serveur : %d \n", 
+
+    printf("numero de port pour la connexion au serveur : %d \n",
 		   ntohs(adresse_locale.sin_port) /*ntohs(ptr_service->s_port)*/);
-    
+
     /* creation de la socket */
     if ((socket_descriptor = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 		perror("erreur : impossible de creer la socket de connexion avec le client.");
@@ -104,32 +147,35 @@ main(int argc, char **argv) {
 		perror("erreur : impossible de lier la socket a l'adresse de connexion.");
 		exit(1);
     }
-    
+
     /* initialisation de la file d'ecoute */
     listen(socket_descriptor,5);
 
     /* attente des connexions et traitement des donnees recues */
     for(;;) {
-    
+
 		longueur_adresse_courante = sizeof(adresse_client_courant);
-		
+
 		/* adresse_client_courant sera renseigné par accept via les infos du connect */
-		if ((nouv_socket_descriptor = 
-			accept(socket_descriptor, 
+		if ((nouv_socket_descriptor =
+			accept(socket_descriptor,
 			       (sockaddr*)(&adresse_client_courant),
 			       &longueur_adresse_courante))
 			 < 0) {
 			perror("erreur : impossible d'accepter la connexion avec le client.");
 			exit(1);
 		}
-		
+
 		/* traitement du message */
 		printf("reception d'un message.\n");
-		
+
 		renvoi(nouv_socket_descriptor);
-						
+
 		close(nouv_socket_descriptor);
-		
+
     }
-    
+    end();
+
 }
+
+

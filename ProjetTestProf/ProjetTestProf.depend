@@ -1,0 +1,29 @@
+# depslib dependency file v1.0
+1384901817 source:e:\seb\documents\github\projetreseau2013\projettestprof\main.c
+	<stdio.h>
+	<stdlib.h>
+
+1384901965 source:e:\seb\documents\github\projetreseau2013\projettestprof\client.c
+	<stdlib.h>
+	<stdio.h>
+	<string.h>
+	<winsock2.h>
+	<sys/types.h>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<unistd.h>
+	<netdb.h>
+
+1384906074 source:e:\seb\documents\github\projetreseau2013\projettestprof\server.c
+	<stdlib.h>
+	<stdio.h>
+	<winsock2.h>
+	<sys/types.h>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<unistd.h>
+	<netdb.h>
+	<string.h>
+
