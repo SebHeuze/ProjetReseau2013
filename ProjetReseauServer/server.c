@@ -32,6 +32,8 @@ typedef struct in_addr IN_ADDR;
 #include <string.h> 		/* pour bcopy, ... */
 
 #define TAILLE_MAX_NOM 256
+#define BUFFSIZE 512
+#define PORT 5000
 
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
@@ -58,116 +60,119 @@ void end(void)
 #endif
 }
 
-/**
-    Fonction pour écrire en couleur dans la console
-**/
-void color(int couleurDuTexte,int couleurDeFond)
+void send_to_all(int j, int i, int sockfd, int nbytes_recvd, char *recv_buf, fd_set *master)
 {
-        HANDLE H=GetStdHandle(STD_OUTPUT_HANDLE);
-        SetConsoleTextAttribute(H,couleurDeFond*16+couleurDuTexte);
+	if (FD_ISSET(j, master)){
+		if (j != sockfd && j != i) {
+			if (send(j, recv_buf, nbytes_recvd, 0) == -1) {
+				perror("send");
+			}
+		}
+	}
 }
 
+void send_recv(int i, fd_set *master, int sockfd, int fdmax)
+{
+	int nbytes_recvd, j;
+	char recv_buf[BUFFSIZE], buf[BUFFSIZE];
 
-/*------------------------------------------------------*/
-main(int argc, char **argv) {
+	if ((nbytes_recvd = recv(i, recv_buf, BUFFSIZE, 0)) <= 0) {
+		if (nbytes_recvd == 0) {
+			printf("socket %d hung up\n", i);
+		}else {
+			perror("recv");
+		}
+		close(i);
+		FD_CLR(i, master);
+	}else {
+	//	printf("%s\n", recv_buf);
+		for(j = 0; j <= fdmax; j++){
+			send_to_all(j, i, sockfd, nbytes_recvd, recv_buf, master );
+		}
+	}
+}
 
+void connection_accept(fd_set *master, int *fdmax, int sockfd, struct sockaddr_in *client_addr)
+{
+	int addrlen;
+	int newsockfd;
+
+	addrlen = sizeof(struct sockaddr_in);
+	if((newsockfd = accept(sockfd, (struct sockaddr *)client_addr, &addrlen)) == -1) {
+		perror("accept");
+		exit(1);
+	}else {
+		FD_SET(newsockfd, master);
+		if(newsockfd > *fdmax){
+			*fdmax = newsockfd;
+		}
+		printf("new connection from %s on port %d \n",inet_ntoa(client_addr->sin_addr), ntohs(client_addr->sin_port));
+	}
+}
+
+void connect_request(int *sockfd, struct sockaddr_in *my_addr)
+{
+	int yes = 1;
+
+	if ((*sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		perror("Socket");
+		exit(1);
+	}
+
+	my_addr->sin_family = AF_INET;
+	my_addr->sin_port = htons(PORT);
+	my_addr->sin_addr.s_addr = INADDR_ANY;
+	memset(my_addr->sin_zero, '\0', sizeof my_addr->sin_zero);
+
+	if (setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
+		perror("setsockopt");
+		exit(1);
+	}
+
+	if (bind(*sockfd, (struct sockaddr *)my_addr, sizeof(struct sockaddr)) == -1) {
+		perror("Unable to bind");
+		exit(1);
+	}
+	if (listen(*sockfd, 10) == -1) {
+		perror("listen");
+		exit(1);
+	}
+	printf("\nTCPServer Waiting for client on port 5000\n");
+	fflush(stdout);
+}
+int main()
+{
     init();
-    int 	socket_descriptor, 		/* descripteur de socket */
-            error,                      /* Gestion des erreurs */
-			nouv_socket_descriptor, 	/* [nouveau] descripteur de socket */
-			longueur_adresse_courante,  /* longueur d'adresse courante d'un client */
-            longueur_message; 	/* longueur du message reçu */
-    sockaddr_in 	adresse_locale, 		/* structure d'adresse locale*/
-			adresse_client_courant; 	/* adresse client courant */
-    hostent*		ptr_hote; 			/* les infos recuperees sur la machine hote */
-    servent*		ptr_service;			/* les infos recuperees sur le service de la machine */
-    char 		machine[TAILLE_MAX_NOM+1]; 	/* nom de la machine locale */
-    char        buffer[256]; /* Va contenir les messages reçus  */
+	fd_set master;
+	fd_set read_fds;
+	int fdmax, i;
+	int sockfd= 0;
+	struct sockaddr_in my_addr, client_addr;
 
-    gethostname(machine,TAILLE_MAX_NOM);		/* recuperation du nom de la machine */
+	FD_ZERO(&master);
+	FD_ZERO(&read_fds);
+	connect_request(&sockfd, &my_addr);
+	FD_SET(sockfd, &master);
 
-    /* recuperation de la structure d'adresse en utilisant le nom */
-    if ((ptr_hote = gethostbyname(machine)) == NULL) {
-		perror("Erreur : impossible de trouver le serveur a partir de son nom.");
-		exit(1);
-    }
+	fdmax = sockfd;
+	while(1){
+		read_fds = master;
+		if(select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1){
+			perror("Select error");
+			exit(4);
+		}
 
-    /* initialisation de la structure adresse_locale avec les infos recuperees */
-
-    /* copie de ptr_hote vers adresse_locale */
-    bcopy((char*)ptr_hote->h_addr, (char*)&adresse_locale.sin_addr, ptr_hote->h_length);
-    adresse_locale.sin_family		= ptr_hote->h_addrtype; 	/* ou AF_INET */
-    adresse_locale.sin_addr.s_addr	= INADDR_ANY; 			/* ou AF_INET */
-
-    /* Definir le service que l'on va utiliser a distance */
-    adresse_locale.sin_port = htons(5000);
-
-    printf("Numero de port pour la connexion au serveur : %d \n", ntohs(adresse_locale.sin_port));
-
-    /* creation de la socket */
-    if ((socket_descriptor = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-		perror("Erreur : impossible de creer la socket de connexion avec le client.");
-		exit(1);
-    }
-
-    /* association du socket socket_descriptor à la structure d'adresse adresse_locale */
-    if ((bind(socket_descriptor, (sockaddr*)(&adresse_locale), sizeof(adresse_locale))) < 0) {
-		perror("Erreur : impossible de lier la socket a l'adresse de connexion.");
-		exit(1);
-    }
-
-    /* initialisation de la file d'ecoute */
-    listen(socket_descriptor,5);
-
-    /* attente des connexions et traitement des donnees recues */
-    longueur_adresse_courante = sizeof(adresse_client_courant);
-
-    /* adresse_client_courant sera renseigné par accept via les infos du connect */
-    if ((nouv_socket_descriptor = accept(socket_descriptor, (sockaddr*)(&adresse_client_courant), &longueur_adresse_courante)) < 0) {
-        perror("erreur : impossible d'accepter la connexion avec le client.");
-        exit(1);
-    }
-
-    /* Client connecté */
-    printf("::::: Client connecté\n\n");
-
-
-    int go =1;
-    while(go)
-    {
-        error = recv(nouv_socket_descriptor, buffer, sizeof(buffer)-1, 0);
-        if(error != SOCKET_ERROR)
-        {
-            buffer[error] = '\0';
-            color(12,0);
-            printf(">>>> Le client dit: %s\n",buffer);
-        }
-        else
-        {
-            printf(":-/ Socket error, recv !\n");
-            go = 0;
-        }
-
-        char bufferSend[50];
-        color(9,0);
-        printf("<<<< Le server dit: ");
-        fgets(bufferSend, sizeof(bufferSend), stdin);
-        error = send(nouv_socket_descriptor, bufferSend, strlen(bufferSend), 0);
-        color(7,0);
-        printf("\n...................Attente de la reponse du client....\n\n");
-        if(error == SOCKET_ERROR)
-        {
-            color(4,0);
-            printf(":-/ Socket error, send !\n");
-            go = 0;
-        }
-    }
-
-    color(7,0);
-    close(nouv_socket_descriptor);
-
-    end();
-
+		for (i = 0; i <= fdmax; i++){
+			if (FD_ISSET(i, &read_fds)){
+				if (i == sockfd)
+					connection_accept(&master, &fdmax, sockfd, &client_addr);
+				else
+					send_recv(i, &master, sockfd, fdmax);
+			}
+		}
+	}
+	end();
+	return 0;
 }
 
 
