@@ -34,6 +34,7 @@
 		<Unit filename="client.c">
 			<Option compilerVar="CC" />
 		</Unit>
+		<Unit filename="client.h" />
 		<Extensions>
 			<code_completion />
 			<envvars />

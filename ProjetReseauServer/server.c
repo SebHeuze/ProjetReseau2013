@@ -1,178 +1,241 @@
-/********************************************************
-    Projet Réseau application serveur.
-    Auteurs : LEDRIANT Cyril, HEUZE Sébastien
-*********************************************************/
-#include <stdlib.h>
 #include <stdio.h>
-#ifdef WIN32 /* Version windows */
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 
-#include <winsock2.h>
-#define bcopy(b1,b2,len) (memmove((b2), (b1), (len)), (void) 0)
+#include "server.h"
+#include "client.h"
 
-#elif defined (linux) /* Version Linux */
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h> /* close */
-#include <netdb.h> /* gethostbyname */
-#define INVALID_SOCKET -1
-#define SOCKET_ERROR -1
-#define closesocket(s) close(s)
-typedef int SOCKET;
-typedef struct in_addr IN_ADDR;
-
-#else /* sinon vous êtes sur une plateforme non supportée */
-
-#error not defined for this platform
-
-#endif
-
-#include <string.h> 		/* pour bcopy, ... */
-
-#define TAILLE_MAX_NOM 256
-#define BUFFSIZE 512
-#define PORT 5000
-
-typedef struct sockaddr sockaddr;
-typedef struct sockaddr_in sockaddr_in;
-typedef struct hostent hostent;
-typedef struct servent servent;
-
-void init(void)
+static void init(void)
 {
 #ifdef WIN32
-    WSADATA wsa;
-    int err = WSAStartup(MAKEWORD(2, 2), &wsa);
-    if(err < 0)
-    {
-        puts("WSAStartup failed !");
-        exit(EXIT_FAILURE);
-    }
+   WSADATA wsa;
+   int err = WSAStartup(MAKEWORD(2, 2), &wsa);
+   if(err < 0)
+   {
+      puts("WSAStartup failed !");
+      exit(EXIT_FAILURE);
+   }
+   #define errno WSAGetLastError()
 #endif
 }
 
-void end(void)
+static void end(void)
 {
 #ifdef WIN32
-    WSACleanup();
+   WSACleanup();
 #endif
 }
 
-void send_to_all(int j, int i, int sockfd, int nbytes_recvd, char *recv_buf, fd_set *master)
+static void app(void)
 {
-	if (FD_ISSET(j, master)){
-		if (j != sockfd && j != i) {
-			if (send(j, recv_buf, nbytes_recvd, 0) == -1) {
-				perror("send");
-			}
-		}
-	}
+   SOCKET sock = init_connection();
+   char buffer[BUF_SIZE];
+   /* the index for the array */
+   int actual = 0;
+   int max = sock;
+   /* an array for all clients */
+   Client clients[MAX_CLIENTS];
+
+   fd_set rdfs;
+
+   while(1)
+   {
+      int i = 0;
+      FD_ZERO(&rdfs);
+
+      /* add STDIN_FILENO */
+      FD_SET(STDIN_FILENO, &rdfs);
+
+      /* add the connection socket */
+      FD_SET(sock, &rdfs);
+
+      /* add socket of each client */
+      for(i = 0; i < actual; i++)
+      {
+         FD_SET(clients[i].sock, &rdfs);
+      }
+
+      if(select(max + 1, &rdfs, NULL, NULL, NULL) == -1)
+      {
+         perror("select()");
+         exit(errno);
+      }
+
+      /* something from standard input : i.e keyboard */
+      if(FD_ISSET(STDIN_FILENO, &rdfs))
+      {
+         /* stop process when type on keyboard */
+         break;
+      }
+      else if(FD_ISSET(sock, &rdfs))
+      {
+         /* new client */
+         SOCKADDR_IN csin = { 0 };
+         size_t sinsize = sizeof csin;
+         int csock = accept(sock, (SOCKADDR *)&csin, &sinsize);
+         if(csock == SOCKET_ERROR)
+         {
+            perror("accept()");
+            continue;
+         }
+
+         /* after connecting the client sends its name */
+         if(read_client(csock, buffer) == -1)
+         {
+            /* disconnected */
+            continue;
+         }
+
+         /* what is the new maximum fd ? */
+         max = csock > max ? csock : max;
+
+         FD_SET(csock, &rdfs);
+
+         Client c = { csock };
+         strncpy(c.name, buffer, BUF_SIZE - 1);
+         clients[actual] = c;
+         actual++;
+      }
+      else
+      {
+         int i = 0;
+         for(i = 0; i < actual; i++)
+         {
+            /* a client is talking */
+            if(FD_ISSET(clients[i].sock, &rdfs))
+            {
+               Client client = clients[i];
+               int c = read_client(clients[i].sock, buffer);
+               /* client disconnected */
+               if(c == 0)
+               {
+                  closesocket(clients[i].sock);
+                  remove_client(clients, i, &actual);
+                  strncpy(buffer, client.name, BUF_SIZE - 1);
+                  strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+                  send_message_to_all_clients(clients, client, actual, buffer, 1);
+               }
+               else
+               {
+                  send_message_to_all_clients(clients, client, actual, buffer, 0);
+               }
+               break;
+            }
+         }
+      }
+   }
+
+   clear_clients(clients, actual);
+   end_connection(sock);
 }
 
-void send_recv(int i, fd_set *master, int sockfd, int fdmax)
+static void clear_clients(Client *clients, int actual)
 {
-	int nbytes_recvd, j;
-	char recv_buf[BUFFSIZE], buf[BUFFSIZE];
-
-	if ((nbytes_recvd = recv(i, recv_buf, BUFFSIZE, 0)) <= 0) {
-		if (nbytes_recvd == 0) {
-			printf("socket %d hung up\n", i);
-		}else {
-			perror("recv");
-		}
-		close(i);
-		FD_CLR(i, master);
-	}else {
-	//	printf("%s\n", recv_buf);
-		for(j = 0; j <= fdmax; j++){
-			send_to_all(j, i, sockfd, nbytes_recvd, recv_buf, master );
-		}
-	}
+   int i = 0;
+   for(i = 0; i < actual; i++)
+   {
+      closesocket(clients[i].sock);
+   }
 }
 
-void connection_accept(fd_set *master, int *fdmax, int sockfd, struct sockaddr_in *client_addr)
+static void remove_client(Client *clients, int to_remove, int *actual)
 {
-	int addrlen;
-	int newsockfd;
-
-	addrlen = sizeof(struct sockaddr_in);
-	if((newsockfd = accept(sockfd, (struct sockaddr *)client_addr, &addrlen)) == -1) {
-		perror("accept");
-		exit(1);
-	}else {
-		FD_SET(newsockfd, master);
-		if(newsockfd > *fdmax){
-			*fdmax = newsockfd;
-		}
-		printf("new connection from %s on port %d \n",inet_ntoa(client_addr->sin_addr), ntohs(client_addr->sin_port));
-	}
+   /* we remove the client in the array */
+   memmove(clients + to_remove, clients + to_remove + 1, (*actual - to_remove - 1) * sizeof(Client));
+   /* number client - 1 */
+   (*actual)--;
 }
 
-void connect_request(int *sockfd, struct sockaddr_in *my_addr)
+static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server)
 {
-	int yes = 1;
-
-	if ((*sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-		perror("Socket");
-		exit(1);
-	}
-
-	my_addr->sin_family = AF_INET;
-	my_addr->sin_port = htons(PORT);
-	my_addr->sin_addr.s_addr = INADDR_ANY;
-	memset(my_addr->sin_zero, '\0', sizeof my_addr->sin_zero);
-
-	if (setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
-		perror("setsockopt");
-		exit(1);
-	}
-
-	if (bind(*sockfd, (struct sockaddr *)my_addr, sizeof(struct sockaddr)) == -1) {
-		perror("Unable to bind");
-		exit(1);
-	}
-	if (listen(*sockfd, 10) == -1) {
-		perror("listen");
-		exit(1);
-	}
-	printf("\nTCPServer Waiting for client on port 5000\n");
-	fflush(stdout);
-}
-int main()
-{
-    init();
-	fd_set master;
-	fd_set read_fds;
-	int fdmax, i;
-	int sockfd= 0;
-	struct sockaddr_in my_addr, client_addr;
-
-	FD_ZERO(&master);
-	FD_ZERO(&read_fds);
-	connect_request(&sockfd, &my_addr);
-	FD_SET(sockfd, &master);
-
-	fdmax = sockfd;
-	while(1){
-		read_fds = master;
-		if(select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1){
-			perror("Select error");
-			exit(4);
-		}
-
-		for (i = 0; i <= fdmax; i++){
-			if (FD_ISSET(i, &read_fds)){
-				if (i == sockfd)
-					connection_accept(&master, &fdmax, sockfd, &client_addr);
-				else
-					send_recv(i, &master, sockfd, fdmax);
-			}
-		}
-	}
-	end();
-	return 0;
+   int i = 0;
+   char message[BUF_SIZE];
+   message[0] = 0;
+   for(i = 0; i < actual; i++)
+   {
+      /* we don't send message to the sender */
+      if(sender.sock != clients[i].sock)
+      {
+         if(from_server == 0)
+         {
+            strncpy(message, sender.name, BUF_SIZE - 1);
+            strncat(message, " : ", sizeof message - strlen(message) - 1);
+         }
+         strncat(message, buffer, sizeof message - strlen(message) - 1);
+         write_client(clients[i].sock, message);
+      }
+   }
 }
 
+static int init_connection(void)
+{
+   SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+   SOCKADDR_IN sin = { 0 };
 
+   if(sock == INVALID_SOCKET)
+   {
+      perror("socket()");
+      exit(errno);
+   }
+
+   sin.sin_addr.s_addr = htonl(INADDR_ANY);
+   sin.sin_port = htons(PORT);
+   sin.sin_family = AF_INET;
+
+   if(bind(sock,(SOCKADDR *) &sin, sizeof sin) == SOCKET_ERROR)
+   {
+      perror("bind()");
+      exit(errno);
+   }
+
+   if(listen(sock, MAX_CLIENTS) == SOCKET_ERROR)
+   {
+      perror("listen()");
+      exit(errno);
+   }
+
+   return sock;
+}
+
+static void end_connection(int sock)
+{
+   closesocket(sock);
+}
+
+static int read_client(SOCKET sock, char *buffer)
+{
+   int n = 0;
+
+   if((n = recv(sock, buffer, BUF_SIZE - 1, 0)) < 0)
+   {
+      perror("recv()");
+      /* if recv error we disonnect the client */
+      n = 0;
+   }
+
+   buffer[n] = 0;
+
+   return n;
+}
+
+static void write_client(SOCKET sock, const char *buffer)
+{
+   if(send(sock, buffer, strlen(buffer), 0) < 0)
+   {
+      perror("send()");
+      exit(errno);
+   }
+}
+
+int main(int argc, char **argv)
+{
+   init();
+
+   app();
+
+   end();
+
+   return EXIT_SUCCESS;
+}

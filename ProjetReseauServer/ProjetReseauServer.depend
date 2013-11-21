@@ -1,0 +1,22 @@
+# depslib dependency file v1.0
+1385041540 source:c:\users\seb\documents\github\projetreseau2013\projetreseauserver\server.c
+	<stdio.h>
+	<stdlib.h>
+	<errno.h>
+	<string.h>
+	"server.h"
+	"client.h"
+
+1385041124 c:\users\seb\documents\github\projetreseau2013\projetreseauserver\server.h
+	<winsock2.h>
+	<sys/types.h>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<unistd.h>
+	<netdb.h>
+	"client.h"
+
+1385041131 c:\users\seb\documents\github\projetreseau2013\projetreseauserver\client.h
+	"server.h"
+

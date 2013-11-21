@@ -31,9 +31,11 @@
 		<Compiler>
 			<Add option="-Wall" />
 		</Compiler>
+		<Unit filename="client.h" />
 		<Unit filename="server.c">
 			<Option compilerVar="CC" />
 		</Unit>
+		<Unit filename="server.h" />
 		<Extensions>
 			<DoxyBlocks>
 				<comment_style block="0" line="0" />
