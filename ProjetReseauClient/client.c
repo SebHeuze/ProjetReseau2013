@@ -40,6 +40,7 @@ static void app(const char *address, const char *name)
    /* Initialisation de la connexion  */
    SOCKET sock = init_connection(address);
    char buffer[BUF_SIZE];
+   char *commande;
 
     /* Lot de descripteurs */
    fd_set rdfs;
@@ -70,18 +71,23 @@ static void app(const char *address, const char *name)
       {
          /* On récupère l'entrée clavier */
          fgets(buffer, BUF_SIZE - 1, stdin);
-         {
-            char *p = NULL;
-            p = strstr(buffer, "\n");
-            if(p != NULL)
-            {
-               *p = 0;
-            }
-            else
-            {
-               /* fclean */
-               buffer[BUF_SIZE - 1] = 0;
-            }
+        char *p = NULL;
+        p = strstr(buffer, "\n");
+        if(p != NULL)
+        {
+            /* On déférence le caractère si présent */
+           *p = 0;
+        }
+        else
+        {
+           buffer[BUF_SIZE - 1] = 0;
+
+        }
+        commande = strtok(buffer, " ");
+        if( commande != NULL ) {
+           if(!strncasecmp(commande,"/sendfile", strlen(commande))){
+                printf("%s\n", "Commande");
+           }
          }
          write_server(sock, buffer);
       } /* Sinon ça vient du socket dans ce cas on lit son contenu */
@@ -156,7 +162,7 @@ static int read_server(SOCKET sock, char *buffer)
       perror("recv()");
       exit(errno);
    }
-
+   /* On ajoute le caractère final */
    buffer[n] = 0;
 
    return n;
