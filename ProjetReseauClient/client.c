@@ -5,6 +5,10 @@
 
 #include "client.h"
 
+
+/**
+* Initialisation sockets Windows
+**/
 static void init(void)
 {
 #ifdef WIN32
@@ -18,6 +22,9 @@ static void init(void)
 #endif
 }
 
+/**
+* Nettoyage sockets Windows
+**/
 static void end(void)
 {
 #ifdef WIN32
@@ -25,35 +32,43 @@ static void end(void)
 #endif
 }
 
+/**
+* Méthode principale
+**/
 static void app(const char *address, const char *name)
 {
+   /* Initialisation de la connexion  */
    SOCKET sock = init_connection(address);
    char buffer[BUF_SIZE];
 
+    /* Lot de descripteurs */
    fd_set rdfs;
 
-   /* send our name */
+   /* On envoi le pseudo en premier */
    write_server(sock, name);
 
    while(1)
    {
+      /* Mise à zéro des descripteurs */
       FD_ZERO(&rdfs);
 
-      /* add STDIN_FILENO */
+      /* On ajoute l'entrée clavier */
       FD_SET(STDIN_FILENO, &rdfs);
 
-      /* add the socket */
+      /* On ajoute le socket */
       FD_SET(sock, &rdfs);
 
+      /* On trie les sockets actifs */
       if(select(sock + 1, &rdfs, NULL, NULL, NULL) == -1)
       {
          perror("select()");
          exit(errno);
       }
 
-      /* something from standard input : i.e keyboard */
+      /* Entrée clavier */
       if(FD_ISSET(STDIN_FILENO, &rdfs))
       {
+         /* On récupère l'entrée clavier */
          fgets(buffer, BUF_SIZE - 1, stdin);
          {
             char *p = NULL;
@@ -69,11 +84,11 @@ static void app(const char *address, const char *name)
             }
          }
          write_server(sock, buffer);
-      }
+      } /* Sinon ça vient du socket dans ce cas on lit son contenu */
       else if(FD_ISSET(sock, &rdfs))
       {
          int n = read_server(sock, buffer);
-         /* server down */
+         /* Si le serveur est down on affiche un message */
          if(n == 0)
          {
             printf("Server disconnected !\n");
@@ -86,6 +101,9 @@ static void app(const char *address, const char *name)
    end_connection(sock);
 }
 
+/**
+* Classe d'initialisation de la connexion
+**/
 static int init_connection(const char *address)
 {
    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -118,11 +136,17 @@ static int init_connection(const char *address)
    return sock;
 }
 
+/**
+* On ferme la connexion
+**/
 static void end_connection(int sock)
 {
    closesocket(sock);
 }
 
+/**
+* Lecture d'un message serveur
+**/
 static int read_server(SOCKET sock, char *buffer)
 {
    int n = 0;
@@ -138,6 +162,9 @@ static int read_server(SOCKET sock, char *buffer)
    return n;
 }
 
+/**
+* Ecriture d'un message au serveur
+**/
 static void write_server(SOCKET sock, const char *buffer)
 {
    if(send(sock, buffer, strlen(buffer), 0) < 0)
@@ -147,8 +174,12 @@ static void write_server(SOCKET sock, const char *buffer)
    }
 }
 
+/**
+* Main
+**/
 int main(int argc, char **argv)
 {
+    /* On vérifie que le nombre d'arguments est bon */
    if(argc < 2)
    {
       printf("Usage : %s [address] [pseudo]\n", argv[0]);
