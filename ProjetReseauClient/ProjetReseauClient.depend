@@ -6,7 +6,25 @@
 	<string.h>
 	"client.h"
 
+1385041075 
+
 1385041075 c:\users\seb\documents\github\projetreseau2013\projetreseauclient\client.h
+	<winsock2.h>
+	<sys/types.h>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<unistd.h>
+	<netdb.h>
+
+1385684175 source:/mnt/hgfs/SEB-2/Documents/GitHub/ProjetReseau2013/ProjetReseauClient/client.c
+	<stdio.h>
+	<stdlib.h>
+	<errno.h>
+	<string.h>
+	"client.h"
+
+1385064206 /mnt/hgfs/SEB-2/Documents/GitHub/ProjetReseau2013/ProjetReseauClient/client.h
 	<winsock2.h>
 	<sys/types.h>
 	<sys/socket.h>

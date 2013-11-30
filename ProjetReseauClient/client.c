@@ -40,7 +40,10 @@ static void app(const char *address, const char *name)
    /* Initialisation de la connexion  */
    SOCKET sock = init_connection(address);
    char buffer[BUF_SIZE];
+   char bufferSave[BUF_SIZE];
    char *commande;
+   char *nomFichier;
+   int numbytes;
 
     /* Lot de descripteurs */
    fd_set rdfs;
@@ -83,10 +86,21 @@ static void app(const char *address, const char *name)
            buffer[BUF_SIZE - 1] = 0;
 
         }
-        commande = strtok(buffer, " ");
+        //On sauvegarde avant de manipuler buffer
+        strcpy(bufferSave, buffer);
+        commande = strtok(buffer, " ");;
+
         if( commande != NULL ) {
-           if(!strncasecmp(commande,"/sendfile", strlen(commande))){
-                printf("%s\n", "Commande");
+           if(!strncasecmp(commande,"/getfile", strlen(commande))){
+                printf("%s\n", "Début réception fichier");
+                write_server(sock, bufferSave);
+                nomFichier = strtok(NULL, " ");
+                FILE* fp = fopen(nomFichier, "w");
+                if((numbytes = recv(sock,buffer,1000,0))>0)
+                    buffer[numbytes] = 0;
+                    fprintf(fp,"%s\n",buffer);
+                fclose(fp);
+                printf("%s\n", "Fin réception fichier");
            }
          }
          write_server(sock, buffer);
