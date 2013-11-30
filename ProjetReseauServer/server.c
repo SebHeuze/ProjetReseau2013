@@ -42,9 +42,11 @@ static void app(void)
    /* Initialisation du socket */
    SOCKET sock = init_connection();
    char buffer[BUF_SIZE];
+   char message[BUF_SIZE];
    /* Index de l'array */
    int actual = 0;
    int max = sock;
+   int sizeread;
    /* Le tableau qui va stocker les clients */
    Client clients[MAX_CLIENTS];
 
@@ -53,6 +55,7 @@ static void app(void)
 
    char *commande;
    char *nomFichier;
+   char *contenuFichier;
 
    while(1)
    {
@@ -99,7 +102,7 @@ static void app(void)
          }
 
          /* Après s'être connecté le client envoi son pseudo */
-         if(read_client(csock, buffer) == -1)
+        if(read_client(csock, buffer) == -1)
          {
             /* déconnecté */
             continue;
@@ -141,23 +144,32 @@ static void app(void)
                }
                else
                {
+                   strcpy(message, buffer);
                    commande = strtok(buffer, " ");
                     if( commande != NULL ) {
-                    send_message_to_all_clients(clients, client, actual, buffer, 0);
                        if(!strncasecmp(commande,"/getfile", strlen(commande))){
                             printf("%s\n", "Début envoi fichier");
                             nomFichier = strtok(NULL, " ");
                             FILE* fp = fopen(nomFichier, "r");
-                            int sizeread = fread(buffer,sizeof(char),1000,fp);
+                            sizeread = fread(buffer,sizeof(char),1000,fp);
                             buffer[sizeread] = 0;
                             write(clients[i].sock,buffer,strlen(buffer));
                             printf("%s\n", "Fin envoi fichier");
-                       }
+                       } else if(!strncasecmp(commande,"/sendfile", strlen(commande))){
+                            printf("%s\n", "Début réception fichier");
+                            nomFichier = strtok(NULL, " ");
+                            FILE* fp = fopen(nomFichier, "w");
+                            contenuFichier = strtok(NULL, "\0");
+                            fprintf(fp,"%s\n",contenuFichier);
+                            fclose(fp);
+                            printf("%s\n", "Fin réception fichier");
+                        } else {
+
+                          /* Sinon on se chargfe juste de relayer le message */
+                          send_message_to_all_clients(clients, client, actual, message, 0);
+                        }
                      }
 
-
-                  /* Sinon on se chargfe juste de relayer le message */
-                  send_message_to_all_clients(clients, client, actual, buffer, 0);
                }
                break;
             }

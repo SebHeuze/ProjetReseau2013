@@ -101,9 +101,21 @@ static void app(const char *address, const char *name)
                     fprintf(fp,"%s\n",buffer);
                 fclose(fp);
                 printf("%s\n", "Fin réception fichier");
+           } else if (!strncasecmp(commande,"/sendfile", strlen(commande))){
+                printf("%s\n", "Début envoi fichier");
+                nomFichier = strtok(NULL, " ");
+                FILE* fp = fopen(nomFichier, "r");
+                int sizeread = fread(buffer,sizeof(char),1000,fp);
+                buffer[sizeread] = 0;
+                strncat(bufferSave," ", BUF_SIZE);
+                strncat(bufferSave, buffer, BUF_SIZE);
+                write_server(sock, bufferSave);
+                printf("%s\n", "Fin envoi fichier");
+
+           } else {
+            write_server(sock, bufferSave);
            }
          }
-         write_server(sock, buffer);
       } /* Sinon ça vient du socket dans ce cas on lit son contenu */
       else if(FD_ISSET(sock, &rdfs))
       {
@@ -192,6 +204,7 @@ static void write_server(SOCKET sock, const char *buffer)
       perror("send()");
       exit(errno);
    }
+
 }
 
 /**
